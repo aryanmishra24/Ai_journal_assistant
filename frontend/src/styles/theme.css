@@ -1,21 +1,25 @@
 :root[data-theme="light"] {
-  --background-primary: #ffffff;
-  --background-secondary: #f5f5f5;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --accent-primary: #4a90e2;
-  --accent-secondary: #357abd;
-  --border-color: #e0e0e0;
-  --shadow-color: rgba(0, 0, 0, 0.1);
-  --error-color: #dc3545;
-  --success-color: #28a745;
-  --warning-color: #ffc107;
+  --background-primary: #f8f9fa;
+  --background-secondary: #ffffff;
+  --text-primary: #2c3e50;
+  --text-secondary: #34495e;
+  --accent-primary: #3498db;
+  --accent-secondary: #2980b9;
+  --border-color: #e9ecef;
+  --shadow-color: rgba(0, 0, 0, 0.08);
+  --error-color: #e74c3c;
+  --success-color: #2ecc71;
+  --warning-color: #f1c40f;
   --card-background: #ffffff;
   --input-background: #ffffff;
   --button-text: #ffffff;
   --paper-background: #ffffff;
-  --slider-track: #e0e0e0;
-  --slider-thumb: #4a90e2;
+  --slider-track: #e9ecef;
+  --slider-thumb: #3498db;
+  --summary-background: #f1f8ff;
+  --entry-background: #ffffff;
+  --ai-response-background: #f8f9fa;
+  --hover-color: #f1f8ff;
 }
 
 :root[data-theme="dark"] {
@@ -290,4 +294,254 @@ a:hover {
 /* Target only the AI Response label */
 [data-theme="dark"] .MuiBox-root .MuiTypography-body2:first-of-type {
   color: #bb86fc !important;  /* Purple color for AI Response label */
+}
+
+/* Journal specific styles */
+.journal-entry {
+  background-color: var(--entry-background);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px var(--shadow-color);
+}
+
+.journal-entry:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px var(--shadow-color);
+}
+
+.journal-entry .timestamp {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 8px;
+}
+
+.journal-entry .content {
+  color: var(--text-primary);
+  font-size: 1rem;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.journal-entry .ai-response {
+  background-color: var(--ai-response-background);
+  border-left: 4px solid var(--accent-primary);
+  padding: 12px 16px;
+  margin-top: 12px;
+  border-radius: 0 8px 8px 0;
+}
+
+/* Summary section styles */
+.summary-section {
+  background-color: var(--summary-background);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 4px var(--shadow-color);
+}
+
+.summary-section:hover {
+  box-shadow: 0 4px 8px var(--shadow-color);
+}
+
+/* Button styles enhancement */
+.MuiButton-contained {
+  background-color: var(--accent-primary) !important;
+  color: var(--button-text) !important;
+  border-radius: 8px !important;
+  text-transform: none !important;
+  font-weight: 600 !important;
+  padding: 8px 24px !important;
+  transition: all 0.3s ease !important;
+}
+
+.MuiButton-contained:hover {
+  background-color: var(--accent-secondary) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px var(--shadow-color) !important;
+}
+
+.MuiButton-outlined {
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+  border-radius: 8px !important;
+  text-transform: none !important;
+  font-weight: 600 !important;
+  padding: 8px 24px !important;
+  transition: all 0.3s ease !important;
+}
+
+.MuiButton-outlined:hover {
+  background-color: var(--hover-color) !important;
+  border-color: var(--accent-secondary) !important;
+  color: var(--accent-secondary) !important;
+  transform: translateY(-1px);
+}
+
+/* TextField enhancement */
+.MuiTextField-root .MuiOutlinedInput-root {
+  border-radius: 8px !important;
+  transition: all 0.3s ease !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-root:hover {
+  border-color: var(--accent-primary) !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-root.Mui-focused {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px var(--hover-color) !important;
+}
+
+/* Paper component enhancement */
+.MuiPaper-root {
+  border-radius: 12px !important;
+  transition: all 0.3s ease !important;
+}
+
+.MuiPaper-root:hover {
+  box-shadow: 0 4px 8px var(--shadow-color) !important;
+}
+
+/* List item enhancement */
+.MuiListItem-root {
+  transition: all 0.3s ease !important;
+}
+
+.MuiListItem-root:hover {
+  background-color: var(--hover-color) !important;
+}
+
+/* Icon button enhancement */
+.MuiIconButton-root {
+  transition: all 0.3s ease !important;
+}
+
+.MuiIconButton-root:hover {
+  background-color: var(--hover-color) !important;
+  transform: scale(1.1);
+}
+
+/* Navbar styles */
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background-color: var(--background-secondary);
+  box-shadow: 0 2px 4px var(--shadow-color);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  gap: 1rem;
+}
+
+.nav-brand {
+  flex: 0 0 auto;
+}
+
+.nav-brand a {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  text-decoration: none;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+}
+
+.nav-brand a:hover {
+  color: var(--accent-secondary);
+  transform: translateY(-1px);
+}
+
+.nav-links {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+  flex: 1;
+  justify-content: flex-end;
+  margin-right: 1rem;
+}
+
+.nav-links a {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background-color: var(--accent-primary);
+  transition: all 0.3s ease;
+  transform: translateX(-50%);
+}
+
+.nav-links a:hover {
+  color: var(--accent-primary);
+  background-color: var(--hover-color);
+}
+
+.nav-links a:hover::after {
+  width: 80%;
+}
+
+.nav-links a.active {
+  color: var(--accent-primary);
+  background-color: var(--hover-color);
+}
+
+.nav-links a.active::after {
+  width: 80%;
+}
+
+.nav-links button {
+  background-color: var(--accent-primary);
+  color: var(--button-text);
+  border: none;
+  padding: 0.5rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.nav-links button:hover {
+  background-color: var(--accent-secondary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px var(--shadow-color);
+}
+
+/* Theme toggle button styles */
+.theme-toggle {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  margin-left: 0.5rem;
+}
+
+.theme-toggle:hover {
+  background-color: var(--hover-color);
+  transform: scale(1.1);
 } 

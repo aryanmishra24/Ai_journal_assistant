@@ -2,6 +2,38 @@ import axios from 'axios';
 
 const API_URL = 'http://localhost:8003';
 
+// Configure axios defaults
+axios.defaults.baseURL = API_URL;
+axios.defaults.headers.common['Content-Type'] = 'application/json';
+
+// Add request interceptor for logging
+axios.interceptors.request.use(
+  (config) => {
+    console.log('Making request to:', config.url);
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for logging
+axios.interceptors.response.use(
+  (response) => {
+    console.log('Received response from:', response.config.url);
+    return response;
+  },
+  (error) => {
+    console.error('Response error:', error.response?.data || error.message);
+    return Promise.reject(error);
+  }
+);
+
 // Types
 export interface User {
   id: number;
@@ -35,6 +67,7 @@ export interface MoodStats {
     date: string;
     average_mood: number;
   }>;
+  summary?: string;
 }
 
 export interface JournalStats {
@@ -72,6 +105,16 @@ export interface DailySummary {
   id: number;
   date: string;
   summary: string;
+}
+
+export interface DailyMoodSummary {
+  id: number;
+  user_id: number;
+  date: string;
+  average_mood: number;
+  mood_distribution: Record<string, number>;
+  summary: string;
+  created_at: string;
 }
 
 // Auth API
@@ -197,13 +240,18 @@ export const deleteMood = async (id: number) => {
   return response.data;
 };
 
-// Axios interceptor for adding auth token
-axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
-  }
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-}); 
+// Mood Summary API
+export const generateMoodSummary = async () => {
+  const response = await axios.post(`${API_URL}/mood/summary/generate`);
+  return response.data;
+};
+
+export const getMoodSummaries = async () => {
+  const response = await axios.get(`${API_URL}/mood/summary`);
+  return response.data;
+};
+
+export const getMoodSummary = async (date: string) => {
+  const response = await axios.get(`${API_URL}/mood/summary/${date}`);
+  return response.data;
+}; 
