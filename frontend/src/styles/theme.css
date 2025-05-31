@@ -1,0 +1,293 @@
+:root[data-theme="light"] {
+  --background-primary: #ffffff;
+  --background-secondary: #f5f5f5;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --accent-primary: #4a90e2;
+  --accent-secondary: #357abd;
+  --border-color: #e0e0e0;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --error-color: #dc3545;
+  --success-color: #28a745;
+  --warning-color: #ffc107;
+  --card-background: #ffffff;
+  --input-background: #ffffff;
+  --button-text: #ffffff;
+  --paper-background: #ffffff;
+  --slider-track: #e0e0e0;
+  --slider-thumb: #4a90e2;
+}
+
+:root[data-theme="dark"] {
+  --background-primary: #121212;
+  --background-secondary: #1e1e1e;
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+  --accent-primary: #ffffff;
+  --accent-secondary: #cccccc;
+  --border-color: #ffffff;
+  --shadow-color: rgba(255, 255, 255, 0.1);
+  --error-color: #ff4444;
+  --success-color: #00ff00;
+  --warning-color: #ffff00;
+  --card-background: #121212;
+  --input-background: #121212;
+  --button-text: #000000;
+  --paper-background: #1e1e1e;
+  --slider-track: #333333;
+  --slider-thumb: #ffffff;
+}
+
+/* Global styles */
+body {
+  background-color: var(--background-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Card styles */
+.card {
+  background-color: var(--card-background);
+  border: 2px solid var(--border-color);
+  box-shadow: 0 2px 4px var(--shadow-color);
+}
+
+/* Input styles */
+input, textarea {
+  background-color: var(--input-background);
+  color: var(--text-primary);
+  border: 2px solid var(--border-color);
+}
+
+/* Button styles */
+button {
+  background-color: var(--accent-primary);
+  color: var(--button-text);
+  border: 2px solid var(--border-color);
+}
+
+button:hover {
+  background-color: var(--accent-secondary);
+}
+
+/* Link styles */
+a {
+  color: var(--accent-primary);
+}
+
+a:hover {
+  color: var(--accent-secondary);
+}
+
+/* Material-UI component overrides */
+.MuiPaper-root {
+  background-color: var(--paper-background) !important;
+  color: var(--text-primary) !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-root {
+  background-color: var(--input-background) !important;
+  color: var(--text-primary) !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-notchedOutline {
+  border-color: var(--border-color) !important;
+}
+
+.MuiTextField-root .MuiInputLabel-root {
+  color: var(--text-secondary) !important;
+}
+
+.MuiSlider-root .MuiSlider-track {
+  background-color: var(--slider-track) !important;
+}
+
+.MuiSlider-root .MuiSlider-thumb {
+  background-color: var(--slider-thumb) !important;
+}
+
+.MuiAlert-root {
+  background-color: var(--paper-background) !important;
+  color: var(--text-primary) !important;
+}
+
+.MuiAlert-standardError {
+  background-color: rgba(255, 68, 68, 0.1) !important;
+}
+
+.MuiAlert-standardSuccess {
+  background-color: rgba(0, 255, 0, 0.1) !important;
+}
+
+.MuiAlert-standardWarning {
+  background-color: rgba(255, 255, 0, 0.1) !important;
+}
+
+.MuiAlert-standardInfo {
+  background-color: rgba(74, 144, 226, 0.1) !important;
+}
+
+/* Chat container specific styles */
+.chat-container {
+  background-color: var(--paper-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.chat-message {
+  background-color: var(--background-secondary);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.chat-message.user {
+  background-color: var(--accent-primary);
+  color: var(--button-text);
+}
+
+.chat-message.ai {
+  background-color: var(--background-secondary);
+  color: var(--text-primary);
+}
+
+/* Dark Theme */
+[data-theme="dark"] .MuiPaper-root {
+  background-color: var(--paper-background) !important;
+  color: var(--primary-text) !important;
+}
+
+[data-theme="dark"] .MuiTextField-root .MuiInputBase-root {
+  background-color: var(--secondary-bg) !important;
+  color: var(--primary-text) !important;
+}
+
+[data-theme="dark"] .MuiSlider-root .MuiSlider-track {
+  background-color: var(--slider-track) !important;
+}
+
+[data-theme="dark"] .MuiSlider-root .MuiSlider-thumb {
+  background-color: var(--slider-thumb) !important;
+}
+
+[data-theme="dark"] .MuiAlert-root {
+  background-color: var(--secondary-bg) !important;
+  color: var(--primary-text) !important;
+}
+
+/* Chat Container Styles */
+[data-theme="dark"] .chat-container {
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+[data-theme="dark"] .chat-message {
+  background-color: var(--paper-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+[data-theme="dark"] .chat-message.user {
+  background-color: var(--accent-color);
+  color: var(--button-text);
+}
+
+[data-theme="dark"] .chat-message.ai {
+  background-color: var(--paper-background);
+  color: var(--primary-text);
+}
+
+/* Journal Entry Styles */
+[data-theme="dark"] .journal-entry {
+  background-color: var(--paper-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+[data-theme="dark"] .journal-entry .timestamp {
+  color: var(--accent-color);
+  font-size: 0.9em;
+  margin-bottom: 8px;
+}
+
+[data-theme="dark"] .journal-entry .content {
+  color: var(--primary-text);
+  margin-bottom: 12px;
+}
+
+[data-theme="dark"] .journal-entry .ai-response {
+  background-color: var(--secondary-bg);
+  border-left: 3px solid var(--accent-color);
+  padding: 12px;
+  margin-top: 12px;
+  color: var(--primary-text);
+}
+
+/* Form and Input Styles */
+[data-theme="dark"] .form-container {
+  background-color: var(--paper-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+[data-theme="dark"] .form-container label {
+  color: var(--primary-text);
+}
+
+[data-theme="dark"] .form-container input,
+[data-theme="dark"] .form-container textarea {
+  background-color: var(--secondary-bg);
+  color: var(--primary-text);
+  border: 1px solid var(--border-color);
+}
+
+/* Card Styles */
+[data-theme="dark"] .card {
+  background-color: var(--paper-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+[data-theme="dark"] .card-title {
+  color: var(--accent-color);
+  margin-bottom: 12px;
+}
+
+[data-theme="dark"] .card-content {
+  color: var(--primary-text);
+}
+
+/* Alert and Notification Styles */
+[data-theme="dark"] .alert {
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  color: var(--primary-text);
+}
+
+[data-theme="dark"] .notification {
+  background-color: var(--paper-background);
+  border: 1px solid var(--border-color);
+  color: var(--primary-text);
+}
+
+/* Dark mode specific text colors */
+[data-theme="dark"] .MuiTypography-caption {
+  color: #00ffff !important;  /* Bright cyan that's very visible on dark backgrounds */
+  font-weight: 500 !important;  /* Make it slightly bolder */
+}
+
+/* Target only the AI Response label */
+[data-theme="dark"] .MuiBox-root .MuiTypography-body2:first-of-type {
+  color: #bb86fc !important;  /* Purple color for AI Response label */
+} 
