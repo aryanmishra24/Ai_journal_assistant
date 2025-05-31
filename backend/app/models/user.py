@@ -18,4 +18,5 @@ class User(Base):
     # Relationships
     entries = relationship("JournalEntry", back_populates="user")
     daily_summaries = relationship("DailySummary", back_populates="user")
-    moods = relationship("Mood", back_populates="user") 
+    moods = relationship("Mood", back_populates="user")
+    mood_summaries = relationship("DailyMoodSummary", back_populates="user") 

@@ -1,6 +1,7 @@
 import google.generativeai as genai
 from typing import Optional
 import logging
+import os
 from app.config import GEMINI_API_KEY
 
 # Configure logging
@@ -13,10 +14,22 @@ class GeminiAPI:
     def __init__(self, api_key: str = None, max_tokens: int = 512, temperature: float = 0.7):
         """Initialize the Gemini API client"""
         logger.debug(f"Initializing Gemini API with max_tokens={max_tokens}, temperature={temperature}")
-        api_key = api_key or GEMINI_API_KEY
+        
+        # Try to get API key from various sources
+        api_key = (
+            api_key or  # First try passed api_key
+            os.getenv("GEMINI_API_KEY") or  # Then try environment variable
+            GEMINI_API_KEY  # Finally try config file
+        )
+        
         if not api_key:
-            raise ValueError("Gemini API key is required. Please set GEMINI_API_KEY in config.py")
+            logger.error("No API key found in any source")
+            raise ValueError("Unable to generate summary at this time. Please try again later.")
+            
+        logger.debug("Configuring Gemini API with key")
         genai.configure(api_key=api_key)
+        
+        logger.debug("Initializing Gemini model")
         self.model = genai.GenerativeModel('gemini-2.0-flash')
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -42,4 +55,4 @@ class GeminiAPI:
             return response.text
         except Exception as e:
             logger.error(f"Error generating response: {str(e)}")
-            return f"Error generating response: {str(e)}" 
+            raise Exception(f"Failed to generate response: {str(e)}") 

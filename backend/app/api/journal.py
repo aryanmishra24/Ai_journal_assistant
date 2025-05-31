@@ -13,17 +13,11 @@ from app.schemas.summary import DailySummaryResponse
 from app.utils.auth import get_current_active_user
 from app.models.user import User
 from app.services.ai import AIJournalingAssistant
+from app.utils.timezone import to_ist, to_utc, IST_OFFSET
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-# IST timezone offset (UTC+5:30)
-IST_OFFSET = timedelta(hours=5, minutes=30)
-
-def to_ist(utc_time: datetime) -> datetime:
-    """Convert UTC time to IST"""
-    return utc_time + IST_OFFSET
 
 router = APIRouter()
 
@@ -41,6 +35,7 @@ def create_entry(
         current_time = datetime.utcnow()
         ist_time = to_ist(current_time)
         logger.debug(f"Creating entry at UTC: {current_time}, IST: {ist_time}")
+        logger.debug(f"UTC date: {current_time.date()}, IST date: {ist_time.date()}")
         
         db_entry = JournalEntry(
             user_id=current_user.id,
@@ -56,6 +51,7 @@ def create_entry(
         db_entry.created_at = to_ist(db_entry.created_at)
         
         logger.debug(f"Successfully created entry with ID {db_entry.id}")
+        logger.debug(f"Entry created_at (UTC): {current_time}, (IST): {db_entry.created_at}")
         return db_entry
     except Exception as e:
         logger.error(f"Error creating journal entry: {str(e)}", exc_info=True)

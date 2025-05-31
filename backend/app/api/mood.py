@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+import json
 import logging
 from app.database import get_db
-from app.models.mood import Mood
-from app.schemas.mood import MoodCreate, Mood as MoodSchema, MoodStats
+from app.models.mood import Mood, DailyMoodSummary
+from app.schemas.mood import MoodCreate, Mood as MoodSchema, MoodStats, DailyMoodSummary as DailyMoodSummarySchema
 from app.utils.auth import get_current_user
 from app.models.user import User
+from app.services.ai import AIJournalingAssistant
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -134,11 +136,21 @@ def get_mood_stats(
                 })
             current_date += timedelta(days=1)
         
+        # Get today's summary if it exists
+        today = date.today()
+        today_summary = db.query(DailyMoodSummary).filter(
+            DailyMoodSummary.user_id == current_user.id,
+            DailyMoodSummary.date == today
+        ).first()
+        
+        summary = today_summary.summary if today_summary else None
+        
         logger.debug(f"Generated stats: avg={average_mood}, distribution={mood_distribution}")
         return MoodStats(
             average_mood=average_mood,
             mood_distribution=mood_distribution,
-            mood_trend=mood_trend
+            mood_trend=mood_trend,
+            summary=summary
         )
     except HTTPException:
         raise
@@ -176,4 +188,119 @@ def delete_mood(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete mood entry: {str(e)}"
-        ) 
+        )
+
+@router.post("/summary/generate", response_model=DailyMoodSummarySchema)
+def generate_daily_mood_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        today = date.today()
+        
+        # Get all today's moods for the user
+        moods = db.query(Mood).filter(
+            Mood.user_id == current_user.id,
+            Mood.created_at >= datetime.combine(today, datetime.min.time()),
+            Mood.created_at <= datetime.combine(today, datetime.max.time())
+        ).all()
+        
+        if not moods:
+            raise HTTPException(status_code=404, detail="No mood entries for today.")
+        
+        # Calculate average mood
+        average_mood = sum(mood.mood_score for mood in moods) / len(moods)
+        
+        # Calculate mood distribution
+        mood_distribution = {}
+        for mood in moods:
+            mood_distribution[mood.mood_label] = mood_distribution.get(mood.mood_label, 0) + 1
+        
+        # Generate summary using AI
+        assistant = AIJournalingAssistant()
+        summary = assistant.generate_mood_summary(moods)
+        
+        # Check if summary already exists
+        existing = db.query(DailyMoodSummary).filter(
+            DailyMoodSummary.user_id == current_user.id,
+            DailyMoodSummary.date == today
+        ).first()
+        
+        if existing:
+            existing.average_mood = average_mood
+            existing.mood_distribution = json.dumps(mood_distribution)
+            existing.summary = summary
+            db.commit()
+            db.refresh(existing)
+            # Convert mood_distribution back to dict for response
+            existing.mood_distribution = json.loads(existing.mood_distribution)
+            return existing
+        
+        # Create new summary
+        daily_summary = DailyMoodSummary(
+            user_id=current_user.id,
+            date=today,
+            average_mood=average_mood,
+            mood_distribution=json.dumps(mood_distribution),
+            summary=summary
+        )
+        db.add(daily_summary)
+        db.commit()
+        db.refresh(daily_summary)
+        
+        # Convert mood_distribution back to dict for response
+        daily_summary.mood_distribution = json.loads(daily_summary.mood_distribution)
+        return daily_summary
+        
+    except Exception as e:
+        logger.error(f"Error generating daily mood summary: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate daily mood summary: {str(e)}"
+        )
+
+@router.get("/summary", response_model=List[DailyMoodSummarySchema])
+def list_mood_summaries(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        summaries = db.query(DailyMoodSummary).filter(
+            DailyMoodSummary.user_id == current_user.id
+        ).order_by(DailyMoodSummary.date.desc()).all()
+        
+        # Convert mood_distribution from JSON string to dict
+        for summary in summaries:
+            summary.mood_distribution = json.loads(summary.mood_distribution)
+        
+        return summaries
+    except Exception as e:
+        logger.error(f"Error listing mood summaries: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list mood summaries: {str(e)}"
+        )
+
+@router.get("/summary/{summary_date}", response_model=DailyMoodSummarySchema)
+def get_mood_summary(
+    summary_date: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        dt = datetime.strptime(summary_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+    
+    summary = db.query(DailyMoodSummary).filter(
+        DailyMoodSummary.user_id == current_user.id,
+        DailyMoodSummary.date == dt
+    ).first()
+    
+    if not summary:
+        raise HTTPException(status_code=404, detail="Summary not found for this date.")
+    
+    # Convert mood_distribution from JSON string to dict
+    summary.mood_distribution = json.loads(summary.mood_distribution)
+    
+    return summary 

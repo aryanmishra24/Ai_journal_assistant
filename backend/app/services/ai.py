@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.schema import HumanMessage, AIMessage
 from sqlalchemy.orm import Session
+import logging
 
 from app.config import (
     MEMORY_WINDOW_SIZE,
@@ -14,6 +15,11 @@ from app.config import (
 )
 from app.gemini_api import GeminiAPI
 from app.models.journal import JournalEntry, DailySummary
+from app.models.mood import Mood
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 class AIJournalingAssistant:
     """Main AI Journaling Assistant class"""
@@ -99,17 +105,49 @@ class AIJournalingAssistant:
             print("DEBUG - End of prompt")
             
             summary = self.api.generate_response(prompt)
-            
-            # Save summary to database
-            daily_summary = DailySummary(
-                date=date.today(),
-                summary=summary
-            )
-            db.add(daily_summary)
-            db.commit()
-            
             return summary
             
         except Exception as e:
             print(f"Error generating summary: {str(e)}")
-            return f"Error generating summary: {e}" 
+            return f"Error generating summary: {e}"
+
+    def generate_mood_summary(self, moods: List[Mood]) -> str:
+        """Generate a summary of today's moods"""
+        try:
+            if not moods:
+                return "No mood entries found for today to summarize."
+
+            # Format mood entries for summary
+            mood_text = "\n".join([
+                f"Mood Entry ({mood.created_at.strftime('%H:%M')}):\n"
+                f"Score: {mood.mood_score}/10\n"
+                f"Label: {mood.mood_label}\n"
+                f"Notes: {mood.notes if mood.notes else 'No notes'}\n"
+                for mood in moods
+            ])
+
+            # Build prompt for mood summary
+            prompt = f"""Please analyze the following mood entries and provide a concise summary of the user's emotional state throughout the day:
+
+{mood_text}
+
+Please provide a brief summary that captures:
+1. The overall emotional trend
+2. Any notable patterns or changes
+3. A gentle, supportive reflection on their mood journey
+
+Keep the summary concise, empathetic, and focused on emotional well-being."""
+
+            # Generate summary using AI
+            try:
+                logger.debug("Generating mood summary with Gemini API...")
+                summary = self.api.generate_response(prompt)
+                logger.debug(f"Generated summary: {summary[:200]}...")
+                return summary
+            except Exception as e:
+                logger.error(f"Error from Gemini API: {str(e)}")
+                raise Exception(f"Failed to generate mood summary: {str(e)}")
+
+        except Exception as e:
+            logger.error(f"Error generating mood summary: {str(e)}")
+            raise Exception(f"Failed to generate mood summary: {str(e)}") 

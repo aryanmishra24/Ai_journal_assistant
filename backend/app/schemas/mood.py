@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List, Dict
 
 class MoodBase(BaseModel):
@@ -25,4 +25,16 @@ class MoodTrend(BaseModel):
 class MoodStats(BaseModel):
     average_mood: float
     mood_distribution: Dict[str, int]
-    mood_trend: List[MoodTrend] 
+    mood_trend: List[MoodTrend]
+
+class DailyMoodSummary(BaseModel):
+    id: int
+    user_id: int
+    date: date
+    average_mood: float
+    mood_distribution: Dict[str, int]
+    summary: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True 
