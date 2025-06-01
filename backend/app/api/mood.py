@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Union, Optional
 from datetime import datetime, timedelta, date
 import json
 import logging
@@ -10,6 +10,7 @@ from app.schemas.mood import MoodCreate, Mood as MoodSchema, MoodStats, DailyMoo
 from app.utils.auth import get_current_user
 from app.models.user import User
 from app.services.ai import AIJournalingAssistant
+from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -23,6 +24,9 @@ def to_ist(utc_time: datetime) -> datetime:
     return utc_time + IST_OFFSET
 
 router = APIRouter()
+
+class SummaryRequest(BaseModel):
+    date: Optional[str] = None
 
 @router.post("/", response_model=MoodSchema)
 def create_mood(
@@ -49,6 +53,17 @@ def create_mood(
         db.add(db_mood)
         db.commit()
         db.refresh(db_mood)
+        
+        # Delete any existing summary for this date
+        mood_date = to_ist(current_time).date()
+        existing_summary = db.query(DailyMoodSummary).filter(
+            DailyMoodSummary.user_id == current_user.id,
+            DailyMoodSummary.date == mood_date
+        ).first()
+        if existing_summary:
+            db.delete(existing_summary)
+            db.commit()
+            logger.debug(f"Deleted existing summary for {mood_date}")
         
         # Convert created_at to IST for response
         db_mood.created_at = to_ist(db_mood.created_at)
@@ -174,9 +189,22 @@ def delete_mood(
         if not mood:
             logger.debug(f"Mood entry {mood_id} not found")
             raise HTTPException(status_code=404, detail="Mood entry not found")
+        
+        # Get the date of the mood entry before deleting it
+        mood_date = to_ist(mood.created_at).date()
             
         db.delete(mood)
         db.commit()
+        
+        # Delete any existing summary for this date
+        existing_summary = db.query(DailyMoodSummary).filter(
+            DailyMoodSummary.user_id == current_user.id,
+            DailyMoodSummary.date == mood_date
+        ).first()
+        if existing_summary:
+            db.delete(existing_summary)
+            db.commit()
+            logger.debug(f"Deleted existing summary for {mood_date}")
         
         logger.debug(f"Successfully deleted mood entry {mood_id}")
         return None
@@ -192,71 +220,111 @@ def delete_mood(
 
 @router.post("/summary/generate", response_model=DailyMoodSummarySchema)
 def generate_daily_mood_summary(
+    request: SummaryRequest = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     try:
-        today = date.today()
+        # Get current time in UTC and IST
+        current_utc = datetime.utcnow()
+        current_ist = to_ist(current_utc)
         
-        # Get all today's moods for the user
+        # Use provided date or today's date in IST
+        if request.date:
+            try:
+                target_date = datetime.strptime(request.date, "%Y-%m-%d").date()
+                logger.debug(f"Using provided date: {request.date}, parsed as: {target_date}")
+            except ValueError:
+                logger.error(f"Invalid date format received: {request.date}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid date format. Use YYYY-MM-DD."
+                )
+        else:
+            target_date = current_ist.date()
+            logger.debug(f"No date provided, using today's date: {target_date}")
+            
+        logger.debug(f"Current UTC: {current_utc}, Current IST: {current_ist}")
+        logger.debug(f"Target date in IST: {target_date}")
+        
+        # Convert IST date range to UTC for database query
+        target_start_ist = datetime.combine(target_date, datetime.min.time())
+        target_end_ist = datetime.combine(target_date, datetime.max.time())
+        
+        # Convert IST range to UTC for database query
+        target_start_utc = target_start_ist - IST_OFFSET
+        target_end_utc = target_end_ist - IST_OFFSET
+        
+        logger.debug(f"Searching for moods between:")
+        logger.debug(f"IST range: {target_start_ist} to {target_end_ist}")
+        logger.debug(f"UTC range: {target_start_utc} to {target_end_utc}")
+        
+        # Filter moods for the target date
         moods = db.query(Mood).filter(
             Mood.user_id == current_user.id,
-            Mood.created_at >= datetime.combine(today, datetime.min.time()),
-            Mood.created_at <= datetime.combine(today, datetime.max.time())
+            Mood.created_at >= target_start_utc,
+            Mood.created_at <= target_end_utc
         ).all()
         
+        # Log the moods found
+        logger.debug(f"Found {len(moods)} moods for target date")
+        for mood in moods:
+            mood_ist = to_ist(mood.created_at)
+            logger.debug(f"Mood {mood.id} created at UTC: {mood.created_at}, IST: {mood_ist}")
+        
         if not moods:
-            raise HTTPException(status_code=404, detail="No mood entries for today.")
+            logger.info(f"No moods found for user {current_user.id} on {target_date}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No moods found for {target_date}."
+            )
         
-        # Calculate average mood
+        # Delete any existing summary for this date
+        existing_summary = db.query(DailyMoodSummary).filter(
+            DailyMoodSummary.user_id == current_user.id,
+            DailyMoodSummary.date == target_date
+        ).first()
+        if existing_summary:
+            db.delete(existing_summary)
+            db.commit()
+            logger.debug(f"Deleted existing summary for {target_date}")
+        
+        # Use AI to generate summary
+        assistant = AIJournalingAssistant()
+        
+        # Generate summary using AI with the moods
+        summary_text = assistant.generate_mood_summary(moods)
+        
+        # Calculate average mood and distribution
         average_mood = sum(mood.mood_score for mood in moods) / len(moods)
-        
-        # Calculate mood distribution
         mood_distribution = {}
         for mood in moods:
             mood_distribution[mood.mood_label] = mood_distribution.get(mood.mood_label, 0) + 1
         
-        # Generate summary using AI
-        assistant = AIJournalingAssistant()
-        summary = assistant.generate_mood_summary(moods)
-        
-        # Check if summary already exists
-        existing = db.query(DailyMoodSummary).filter(
-            DailyMoodSummary.user_id == current_user.id,
-            DailyMoodSummary.date == today
-        ).first()
-        
-        if existing:
-            existing.average_mood = average_mood
-            existing.mood_distribution = json.dumps(mood_distribution)
-            existing.summary = summary
-            db.commit()
-            db.refresh(existing)
-            # Convert mood_distribution back to dict for response
-            existing.mood_distribution = json.loads(existing.mood_distribution)
-            return existing
-        
-        # Create new summary
-        daily_summary = DailyMoodSummary(
+        # Create new summary with IST date
+        summary = DailyMoodSummary(
             user_id=current_user.id,
-            date=today,
+            date=target_date,
             average_mood=average_mood,
             mood_distribution=json.dumps(mood_distribution),
-            summary=summary
+            summary=summary_text
         )
-        db.add(daily_summary)
+        db.add(summary)
         db.commit()
-        db.refresh(daily_summary)
+        db.refresh(summary)
         
-        # Convert mood_distribution back to dict for response
-        daily_summary.mood_distribution = json.loads(daily_summary.mood_distribution)
-        return daily_summary
+        # Convert mood_distribution from JSON string to dict for response
+        summary.mood_distribution = json.loads(summary.mood_distribution)
         
+        return summary
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error generating daily mood summary: {str(e)}", exc_info=True)
+        logger.error(f"Error generating mood summary: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate daily mood summary: {str(e)}"
+            detail=f"Failed to generate mood summary: {str(e)}"
         )
 
 @router.get("/summary", response_model=List[DailyMoodSummarySchema])

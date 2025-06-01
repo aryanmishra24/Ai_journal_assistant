@@ -29,13 +29,11 @@ def create_entry(
 ):
     try:
         logger.debug(f"Creating journal entry for user {current_user.id}")
-        logger.debug(f"Entry content: {entry.content[:100]}...")  # Log first 100 chars
         
         # Create entry with current UTC time
         current_time = datetime.utcnow()
         ist_time = to_ist(current_time)
         logger.debug(f"Creating entry at UTC: {current_time}, IST: {ist_time}")
-        logger.debug(f"UTC date: {current_time.date()}, IST date: {ist_time.date()}")
         
         db_entry = JournalEntry(
             user_id=current_user.id,
@@ -47,11 +45,21 @@ def create_entry(
         db.commit()
         db.refresh(db_entry)
         
+        # Delete any existing summary for this date
+        entry_date = to_ist(current_time).date()
+        existing_summary = db.query(DailySummary).filter(
+            DailySummary.user_id == current_user.id,
+            DailySummary.date == entry_date
+        ).first()
+        if existing_summary:
+            db.delete(existing_summary)
+            db.commit()
+            logger.debug(f"Deleted existing summary for {entry_date}")
+        
         # Convert created_at to IST for response
         db_entry.created_at = to_ist(db_entry.created_at)
         
-        logger.debug(f"Successfully created entry with ID {db_entry.id}")
-        logger.debug(f"Entry created_at (UTC): {current_time}, (IST): {db_entry.created_at}")
+        logger.debug(f"Successfully created journal entry with ID {db_entry.id}")
         return db_entry
     except Exception as e:
         logger.error(f"Error creating journal entry: {str(e)}", exc_info=True)
@@ -152,23 +160,39 @@ def delete_entry(
     current_user: User = Depends(get_current_active_user)
 ):
     try:
-        entry = db.query(JournalEntry).filter(
-            JournalEntry.id == entry_id,
-            JournalEntry.user_id == current_user.id
-        ).first()
+        logger.debug(f"Deleting journal entry {entry_id} for user {current_user.id}")
+        
+        entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id).first()
         if not entry:
-            raise HTTPException(status_code=404, detail="Entry not found")
+            logger.debug(f"Journal entry {entry_id} not found")
+            raise HTTPException(status_code=404, detail="Journal entry not found")
+        
+        # Get the date of the entry before deleting it
+        entry_date = to_ist(entry.created_at).date()
             
         db.delete(entry)
         db.commit()
+        
+        # Delete any existing summary for this date
+        existing_summary = db.query(DailySummary).filter(
+            DailySummary.user_id == current_user.id,
+            DailySummary.date == entry_date
+        ).first()
+        if existing_summary:
+            db.delete(existing_summary)
+            db.commit()
+            logger.debug(f"Deleted existing summary for {entry_date}")
+        
+        logger.debug(f"Successfully deleted journal entry {entry_id}")
         return None
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting entry {entry_id}: {str(e)}", exc_info=True)
+        logger.error(f"Error deleting journal entry: {str(e)}", exc_info=True)
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete entry: {str(e)}"
+            detail=f"Failed to delete journal entry: {str(e)}"
         )
 
 @router.post("/ai", response_model=dict)

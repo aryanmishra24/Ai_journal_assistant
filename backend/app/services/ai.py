@@ -16,6 +16,7 @@ from app.config import (
 from app.gemini_api import GeminiAPI
 from app.models.journal import JournalEntry, DailySummary
 from app.models.mood import Mood
+from app.utils.timezone import to_ist
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -37,17 +38,19 @@ class AIJournalingAssistant:
     def chat(self, user_input: str, db: Session) -> str:
         """Process user input and return AI response"""
         try:
-            # Build conversation history
-            history = self.memory.chat_memory.messages
-            history_text = ""
+            # Get recent entries from database for context
+            recent_entries = db.query(JournalEntry).order_by(
+                JournalEntry.created_at.desc()
+            ).limit(6).all()
             
-            if history:
+            # Build conversation history from database entries
+            history_text = ""
+            if recent_entries:
                 history_text = "\nPrevious conversation:\n"
-                for msg in history[-6:]:
-                    if isinstance(msg, HumanMessage):
-                        history_text += f"Journal Entry: {msg.content}\n"
-                    elif isinstance(msg, AIMessage):
-                        history_text += f"AI Response: {msg.content}\n"
+                for entry in reversed(recent_entries):  # Reverse to get chronological order
+                    history_text += f"Journal Entry: {entry.content}\n"
+                    if entry.ai_response:
+                        history_text += f"AI Response: {entry.ai_response}\n"
             
             # Build and send prompt
             prompt = self.api.build_prompt(
@@ -57,97 +60,130 @@ class AIJournalingAssistant:
             )
             
             response_text = self.api.generate_response(prompt)
-            
-            # Update memory
-            self.memory.chat_memory.add_user_message(user_input)
-            self.memory.chat_memory.add_ai_message(response_text)
-            
             return response_text
             
         except Exception as e:
-            print(f"Error in chat: {str(e)}")
+            logger.error(f"Error in chat: {str(e)}")
             return f"I apologize, but I encountered an error while processing your journal entry. Please try again."
             
     def _generate_daily_summary(self, db: Session, entries: List[JournalEntry] = None) -> str:
         """Generate a summary of today's journaling session"""
         try:
-            # Get today's entries from database if not provided
-            if entries is None:
-                today = date.today()
-                entries = db.query(JournalEntry).filter(
-                    JournalEntry.created_at >= datetime.combine(today, datetime.min.time()),
-                    JournalEntry.created_at <= datetime.combine(today, datetime.max.time())
-                ).all()
-            
             if not entries:
-                return "📝 No journal entries found for today to summarize."
+                return "📝 No journal entries found to summarize."
             
-            # Format entries for summary with timestamps
+            # Get the date of the first entry
+            entry_date = entries[0].created_at.date()
+            is_today = entry_date == datetime.now().date()
+            tense = "today" if is_today else "on " + entry_date.strftime("%B %d, %Y")
+            entries_text = "Today's conversations" if is_today else f"Conversations from {entry_date.strftime('%B %d, %Y')}"
+            
+            # Format entries for summary with IST timestamps
             conversation_text = "\n".join([
-                f"Entry {i+1} ({entry.created_at.strftime('%H:%M')}):\n{entry.content}\n"
+                f"Entry {i+1} ({to_ist(entry.created_at).strftime('%H:%M')}):\n{entry.content}\n"
                 for i, entry in enumerate(entries)
             ])
             
             # Debug: Print the entries being formatted
-            print("DEBUG - Entries being formatted:")
-            print(conversation_text)
-            print("DEBUG - End of entries")
+            logger.debug("DEBUG - Entries being formatted:")
+            logger.debug(conversation_text)
+            logger.debug("DEBUG - End of entries")
             
             # Build and send summary prompt
-            prompt = self.api.build_prompt(
-                SUMMARY_PROMPT_TEMPLATE,
-                conversations=conversation_text
-            )
+            prompt = f"""You are a compassionate and insightful AI journaling companion. 
+Your task is to create a thoughtful summary of the journaling session for {tense}.
+
+{entries_text}:
+{conversation_text}
+
+Please provide a concise but meaningful summary that captures the key themes, emotions, and insights from these journal entries. 
+Focus on the most significant points while maintaining a warm and empathetic tone.
+Summary:"""
             
             # Debug: Print the prompt being sent
-            print("DEBUG - Prompt being sent to Gemini:")
-            print(prompt)
-            print("DEBUG - End of prompt")
+            logger.debug("DEBUG - Prompt being sent to Gemini:")
+            logger.debug(prompt)
+            logger.debug("DEBUG - End of prompt")
             
             summary = self.api.generate_response(prompt)
             return summary
             
         except Exception as e:
-            print(f"Error generating summary: {str(e)}")
+            logger.error(f"Error generating summary: {str(e)}")
             return f"Error generating summary: {e}"
 
     def generate_mood_summary(self, moods: List[Mood]) -> str:
-        """Generate a summary of today's moods"""
+        """Generate a summary of mood entries using AI."""
         try:
-            if not moods:
-                return "No mood entries found for today to summarize."
+            # Get the date of the first mood entry
+            entry_date = moods[0].created_at.date()
+            is_today = entry_date == datetime.now().date()
+            tense = "today" if is_today else "on " + entry_date.strftime("%B %d, %Y")
+            entries_text = "Today's mood entries" if is_today else f"Mood entries for {entry_date.strftime('%B %d, %Y')}"
+            
+            # Format the mood entries
+            formatted_entries = []
+            for mood in moods:
+                entry_time = mood.created_at.strftime("%H:%M")
+                formatted_entries.append(f"Entry ({entry_time}):\n{mood.mood_label} - {mood.mood_score}/10\n{mood.notes or ''}")
+            
+            # Create the prompt
+            prompt = f"""You are a compassionate and insightful AI journaling companion. 
+Your task is to create a thoughtful summary of the mood entries for {tense}.
 
-            # Format mood entries for summary
-            mood_text = "\n".join([
-                f"Mood Entry ({mood.created_at.strftime('%H:%M')}):\n"
-                f"Score: {mood.mood_score}/10\n"
-                f"Label: {mood.mood_label}\n"
-                f"Notes: {mood.notes if mood.notes else 'No notes'}\n"
-                for mood in moods
-            ])
+{entries_text}:
+{chr(10).join(formatted_entries)}
 
-            # Build prompt for mood summary
-            prompt = f"""Please analyze the following mood entries and provide a concise summary of the user's emotional state throughout the day:
-
-{mood_text}
-
-Please provide a brief summary that captures:
-1. The overall emotional trend
-2. Any notable patterns or changes
-3. A gentle, supportive reflection on their mood journey
-
-Keep the summary concise, empathetic, and focused on emotional well-being."""
-
-            # Generate summary using AI
-            try:
-                logger.debug("Generating mood summary with Gemini API...")
-                summary = self.api.generate_response(prompt)
-                logger.debug(f"Generated summary: {summary[:200]}...")
-                return summary
-            except Exception as e:
-                logger.error(f"Error from Gemini API: {str(e)}")
-                raise Exception(f"Failed to generate mood summary: {str(e)}")
-
+Please provide a concise but meaningful summary that captures the key themes, emotions, and insights from these mood entries. 
+Focus on the most significant points while maintaining a warm and empathetic tone.
+Summary:"""
+            
+            logger.debug("DEBUG - Prompt being sent to Gemini:")
+            logger.debug(prompt)
+            logger.debug("DEBUG - End of prompt")
+            
+            # Generate the summary using Gemini
+            response = self.api.generate_response(prompt)
+            return response
+            
         except Exception as e:
             logger.error(f"Error generating mood summary: {str(e)}")
-            raise Exception(f"Failed to generate mood summary: {str(e)}") 
+            return "Unable to generate mood summary at this time."
+
+    def generate_journal_summary(self, entries: List[JournalEntry]) -> str:
+        """Generate a summary of journal entries using AI."""
+        try:
+            # Get the date of the first entry
+            entry_date = entries[0].created_at.date()
+            is_today = entry_date == datetime.now().date()
+            tense = "today" if is_today else "on " + entry_date.strftime("%B %d, %Y")
+            entries_text = "Today's conversations" if is_today else f"Conversations from {entry_date.strftime('%B %d, %Y')}"
+            
+            # Format the entries
+            formatted_entries = []
+            for entry in entries:
+                entry_time = entry.created_at.strftime("%H:%M")
+                formatted_entries.append(f"Entry {entry.id} ({entry_time}):\n{entry.content}")
+            
+            # Create the prompt
+            prompt = f"""You are a compassionate and insightful AI journaling companion. 
+Your task is to create a thoughtful summary of the journaling session for {tense}.
+
+{entries_text}:
+{chr(10).join(formatted_entries)}
+
+Please provide a concise but meaningful summary that captures the key themes, emotions, and insights from these journal entries. 
+Focus on the most significant points while maintaining a warm and empathetic tone.
+Summary:"""
+            
+            logger.debug("DEBUG - Prompt being sent to Gemini:")
+            logger.debug(prompt)
+            logger.debug("DEBUG - End of prompt")
+            
+            # Generate the summary using Gemini
+            response = self.api.generate_response(prompt)
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating journal summary: {str(e)}")
+            return "Unable to generate journal summary at this time." 

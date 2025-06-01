@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Button, TextField, Typography, Container, List, ListItem, Paper, IconButton, Slider, CircularProgress, Accordion, AccordionSummary, AccordionDetails, Alert } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { getMoods, createMood, deleteMood, getMoodStats, generateMoodSummary } from '../services/api';
-import type { Mood as MoodType, MoodStats } from '../services/api';
+import { getMoods, createMood, deleteMood, generateMoodSummary } from '../services/api';
+import type { Mood as MoodType, DailyMoodSummary } from '../services/api';
 import Layout from '../components/Layout';
 
 interface MoodProps {
@@ -28,11 +28,25 @@ const Mood: React.FC<MoodProps> = ({
   const [notes, setNotes] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [moodStats, setMoodStats] = useState<MoodStats | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
   const [summariesLoading, setSummariesLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [dailySummary, setDailySummary] = useState<DailyMoodSummary | null>(null);
+  const [summaryCache, setSummaryCache] = useState<Record<string, DailyMoodSummary>>({});
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // Load cached summary when date changes
+  useEffect(() => {
+    if (selectedDate && summaryCache[selectedDate]) {
+      setDailySummary(summaryCache[selectedDate]);
+      // Keep the accordion expanded when switching dates if we have a cached summary
+      setExpanded(true);
+    } else {
+      setDailySummary(null);
+      setExpanded(false);
+    }
+    setIsGenerating(false);
+  }, [selectedDate, summaryCache]);
 
   const fetchMoods = useCallback(async () => {
     try {
@@ -46,21 +60,7 @@ const Mood: React.FC<MoodProps> = ({
 
   useEffect(() => {
     fetchMoods();
-    fetchMoodStats();
   }, [fetchMoods]);
-
-  const fetchMoodStats = async () => {
-    try {
-      setStatsLoading(true);
-      const data = await getMoodStats(1);
-      setMoodStats(data);
-      setError(null);
-    } catch (err) {
-      setError('Failed to fetch mood statistics');
-    } finally {
-      setStatsLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +73,6 @@ const Mood: React.FC<MoodProps> = ({
       setMoodLabel('');
       setNotes('');
       fetchMoods();
-      fetchMoodStats();
     } catch (err) {
       setError('Failed to create mood entry');
     } finally {
@@ -85,7 +84,7 @@ const Mood: React.FC<MoodProps> = ({
     try {
       await deleteMood(id);
       setEntries(entries.filter(mood => mood.id !== id));
-      fetchMoodStats();
+      fetchMoods();
       setError(null);
     } catch (error) {
       setError('Failed to delete mood entry');
@@ -101,9 +100,90 @@ const Mood: React.FC<MoodProps> = ({
 
   const getSelectedDateMoods = () => {
     if (!selectedDate) return entries;
-    return entries.filter(mood => 
-      new Date(mood.created_at).toLocaleDateString() === selectedDate
-    );
+    return entries.filter(mood => {
+      const moodDate = new Date(mood.created_at);
+      return moodDate.toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: 'Asia/Kolkata'
+      }) === selectedDate;
+    });
+  };
+
+  const generateSummary = async () => {
+    if (isGenerating) return;
+    
+    try {
+      setIsGenerating(true);
+      setSummariesLoading(true);
+      setSummaryError(null);
+
+      console.log('=== Mood Summary Debug ===');
+      console.log('Selected date:', selectedDate);
+      console.log('Current entries:', entries.map(e => ({
+        id: e.id,
+        mood_score: e.mood_score,
+        mood_label: e.mood_label,
+        created_at: e.created_at,
+        ist_date: new Date(e.created_at).toLocaleDateString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        })
+      })));
+      
+      // Format date as YYYY-MM-DD if provided
+      const formattedDate = selectedDate ? selectedDate.split('/').reverse().join('-') : null;
+      console.log('Formatted date for API:', formattedDate);
+      
+      const response = await generateMoodSummary(formattedDate);
+      console.log('Received summary response:', response);
+      
+      // Add timestamp to the summary for cache invalidation
+      const summaryWithTimestamp = {
+        ...response,
+        timestamp: Date.now()
+      };
+      
+      // Update cache and state
+      if (selectedDate) {
+        setSummaryCache(prev => ({
+          ...prev,
+          [selectedDate]: summaryWithTimestamp
+        }));
+      }
+      setDailySummary(summaryWithTimestamp);
+      // Keep the accordion expanded after generating summary
+      setExpanded(true);
+    } catch (err: any) {
+      console.error('Error generating summary:', err);
+      if (err.response?.status === 404) {
+        setSummaryError(`No mood entries found for ${selectedDate || 'today'}. Please add some entries first.`);
+      } else {
+        setSummaryError('Unable to generate summary. Please try again.');
+      }
+      setExpanded(false);
+    } finally {
+      setSummariesLoading(false);
+      setIsGenerating(false);
+    }
+  };
+
+  const handleAccordionChange = async (event: React.SyntheticEvent, isExpanded: boolean) => {
+    setExpanded(isExpanded);
+    
+    if (isExpanded) {
+      // For any date (including today), first check if we have a cached summary
+      if (selectedDate && summaryCache[selectedDate]) {
+        setDailySummary(summaryCache[selectedDate]);
+        return;
+      }
+      
+      // If no cached summary, generate a new one
+      await generateSummary();
+    }
   };
 
   return (
@@ -129,98 +209,108 @@ const Mood: React.FC<MoodProps> = ({
         {/* Daily Mood Summary Section */}
         <Accordion 
           expanded={expanded}
-          onChange={async (_, isExpanded) => {
-            if (isExpanded && !moodStats?.summary && !summariesLoading) {
-              try {
-                setSummariesLoading(true);
-                setSummaryError(null);
-                console.log('Generating mood summary...');
-                const response = await generateMoodSummary();
-                console.log('Received summary response:', response);
-                setMoodStats(prev => {
-                  console.log('Previous moodStats:', prev);
-                  const updated = prev ? {
-                    ...prev,
-                    summary: response.summary
-                  } : null;
-                  console.log('Updated moodStats:', updated);
-                  return updated;
-                });
-              } catch (err: any) {
-                console.error('Error generating summary:', err);
-                if (err.response?.status === 404) {
-                  setSummaryError('No mood entries found for today. Please add some mood entries first.');
-                } else {
-                  setSummaryError('Unable to generate summary. Please try again.');
-                }
-                setExpanded(false);
-              } finally {
-                setSummariesLoading(false);
-              }
-            } else {
-              setExpanded(isExpanded);
+          onChange={handleAccordionChange}
+          sx={{ 
+            mb: 4, 
+            bgcolor: 'rgba(121, 85, 58, 0.2)', 
+            color: 'primary.contrastText',
+            transition: 'all 0.2s ease-in-out',
+            '&.Mui-expanded': {
+              margin: '16px 0',
             }
           }}
-          sx={{ mb: 4, bgcolor: 'rgba(121, 85, 58, 0.2)', color: 'primary.contrastText' }}
         >
           <AccordionSummary
-            expandIcon={<ExpandMoreIcon sx={{ color: 'primary.contrastText' }} />}
+            expandIcon={<ExpandMoreIcon sx={{ 
+              color: 'primary.contrastText',
+              transition: 'transform 0.2s ease-in-out',
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)'
+            }} />}
             sx={{
               '& .MuiAccordionSummary-content': {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                transition: 'margin 0.2s ease-in-out',
               }
             }}
           >
-            <Typography variant="h6">Today's Mood Summary</Typography>
+            <Typography variant="h6">
+              {selectedDate ? `Summary for ${selectedDate}` : 'Today\'s Summary'}
+            </Typography>
           </AccordionSummary>
           <AccordionDetails>
-            {statsLoading || summariesLoading ? (
-              <Box display="flex" justifyContent="center" p={2}>
+            {summariesLoading ? (
+              <Box 
+                display="flex" 
+                flexDirection="column"
+                alignItems="center" 
+                p={2}
+                sx={{
+                  animation: 'fadeIn 0.2s ease-in-out',
+                  '@keyframes fadeIn': {
+                    '0%': { opacity: 0 },
+                    '100%': { opacity: 1 }
+                  }
+                }}
+              >
                 <CircularProgress color="inherit" />
+                <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+                  Generating your daily mood summary...
+                </Typography>
               </Box>
             ) : summaryError ? (
-              <Alert severity="info" sx={{ mb: 2 }}>
+              <Alert 
+                severity="info" 
+                sx={{ 
+                  mb: 2,
+                  animation: 'slideIn 0.2s ease-in-out',
+                  '@keyframes slideIn': {
+                    '0%': { transform: 'translateY(-10px)', opacity: 0 },
+                    '100%': { transform: 'translateY(0)', opacity: 1 }
+                  }
+                }}
+              >
                 {summaryError}
               </Alert>
-            ) : moodStats ? (
-              <Box>
+            ) : dailySummary ? (
+              <Box sx={{ 
+                p: 2, 
+                bgcolor: 'rgba(121, 85, 58, 0.2)', 
+                borderRadius: 1,
+                border: '1px solid rgba(121, 85, 58, 0.3)',
+                animation: 'fadeIn 0.2s ease-in-out',
+                '@keyframes fadeIn': {
+                  '0%': { opacity: 0 },
+                  '100%': { opacity: 1 }
+                }
+              }}>
+                <Typography variant="h6" gutterBottom>
+                  Mood Analysis
+                </Typography>
                 <Typography variant="body1" gutterBottom>
-                  Average Mood: {getMoodEmoji(Math.round(moodStats.average_mood))} {moodStats.average_mood.toFixed(1)}/10
+                  Average Mood: {dailySummary.average_mood.toFixed(1)}
                 </Typography>
                 <Typography variant="body1" gutterBottom>
                   Mood Distribution:
                 </Typography>
-                <Box display="flex" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
-                  {Object.entries(moodStats.mood_distribution).map(([label, count]) => (
-                    <Typography key={label} component="span" sx={{ 
-                      bgcolor: 'rgba(255, 255, 255, 0.2)',
-                      px: 1,
-                      py: 0.5,
-                      borderRadius: 1
-                    }}>
-                      {label}: {count}
+                <Box sx={{ mb: 2 }}>
+                  {Object.entries(dailySummary.mood_distribution).map(([label, count]) => (
+                    <Typography key={label} variant="body2">
+                      {label}: {count} entries
                     </Typography>
                   ))}
                 </Box>
-                {moodStats.summary && (
-                  <Box sx={{ 
-                    mt: 2, 
-                    p: 2, 
-                    bgcolor: 'rgba(121, 85, 58, 0.2)', 
-                    borderRadius: 1,
-                    border: '1px solid rgba(121, 85, 58, 0.3)'
-                  }}>
-                    <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>
-                      {moodStats.summary}
-                    </Typography>
-                  </Box>
-                )}
+                <Typography variant="h6" gutterBottom>
+                  Summary
+                </Typography>
+                <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>
+                  {dailySummary.summary}
+                </Typography>
               </Box>
             ) : (
               <Typography variant="body1">
-                Click to expand and generate your mood summary
+                Click to expand and generate your daily mood summary
               </Typography>
             )}
           </AccordionDetails>
@@ -313,7 +403,15 @@ const Mood: React.FC<MoodProps> = ({
                   )}
                 </Box>
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                  {new Date(mood.created_at).toLocaleString()}
+                  {new Date(mood.created_at).toLocaleString('en-IN', {
+                    timeZone: 'Asia/Kolkata',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                  })}
                 </Typography>
               </Paper>
             </ListItem>

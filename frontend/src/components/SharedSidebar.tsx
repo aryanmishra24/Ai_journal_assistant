@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Drawer, List, ListItemButton, ListItemText, IconButton, useTheme } from '@mui/material';
+import { Drawer, List, ListItemButton, ListItemText, IconButton, useTheme, Box } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import { JournalEntry, Mood } from '../services/api';
 
@@ -57,27 +57,45 @@ const SharedSidebar: React.FC<SharedSidebarProps> = ({
   }, [sidebarOpen, onToggleSidebar, theme.transitions.duration.standard]);
 
   const getUniqueDates = () => {
-    const dates = entries.map(entry => 
-      new Date(entry.created_at).toLocaleDateString()
-    );
+    const dates = entries.map(entry => {
+      const date = new Date(entry.created_at);
+      return date.toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: 'Asia/Kolkata'
+      });
+    });
     return Array.from(new Set(dates)).sort((a, b) => 
       new Date(b).getTime() - new Date(a).getTime()
     );
   };
 
-  const hasEntriesForToday = () => {
-    const today = new Date().toLocaleDateString();
-    return entries.some(entry => 
-      new Date(entry.created_at).toLocaleDateString() === today
-    );
+  const getTodayDate = () => {
+    return new Date().toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Kolkata'
+    });
   };
 
-  const handleDateClick = (date: string) => {
+  const handleDateClick = (date: string | null) => {
+    const now = Date.now();
+    if (isTransitioning.current || now - lastClickTime.current < 300) return;
+    
+    lastClickTime.current = now;
+    isTransitioning.current = true;
+    
     if (selectedDate === date) {
       onDateSelect(null);
     } else {
       onDateSelect(date);
     }
+    
+    setTimeout(() => {
+      isTransitioning.current = false;
+    }, theme.transitions.duration.standard);
   };
 
   const handleToggleClick = (e: React.MouseEvent) => {
@@ -150,37 +168,71 @@ const SharedSidebar: React.FC<SharedSidebarProps> = ({
         }}
       >
         <List>
-          {!hasEntriesForToday() && (
-            <ListItemButton 
-              onClick={() => onDateSelect(null)}
-              selected={selectedDate === null}
-              sx={{
-                '&.Mui-selected': {
+          <ListItemButton 
+            onClick={() => handleDateClick(null)}
+            selected={selectedDate === null}
+            sx={{
+              transition: theme => theme.transitions.create(['background-color', 'transform'], {
+                duration: theme.transitions.duration.shorter,
+                easing: theme.transitions.easing.easeInOut,
+              }),
+              '&.Mui-selected': {
+                bgcolor: theme.palette.action.selected,
+                '&:hover': {
                   bgcolor: theme.palette.action.selected,
-                  '&:hover': {
-                    bgcolor: theme.palette.action.selected,
-                  }
+                }
+              },
+              '&:hover': {
+                transform: 'translateX(4px)',
+                bgcolor: theme.palette.action.hover,
+              }
+            }}
+          >
+            <ListItemText 
+              primary="Today" 
+              primaryTypographyProps={{
+                sx: {
+                  transition: theme => theme.transitions.create('color', {
+                    duration: theme.transitions.duration.shorter,
+                  }),
+                  fontWeight: selectedDate === null ? 600 : 400,
                 }
               }}
-            >
-              <ListItemText primary="Today" />
-            </ListItemButton>
-          )}
+            />
+          </ListItemButton>
           {getUniqueDates().map((date) => (
             <ListItemButton 
               key={date} 
               onClick={() => handleDateClick(date)}
               selected={selectedDate === date}
               sx={{
+                transition: theme => theme.transitions.create(['background-color', 'transform'], {
+                  duration: theme.transitions.duration.shorter,
+                  easing: theme.transitions.easing.easeInOut,
+                }),
                 '&.Mui-selected': {
                   bgcolor: theme.palette.action.selected,
                   '&:hover': {
                     bgcolor: theme.palette.action.selected,
                   }
+                },
+                '&:hover': {
+                  transform: 'translateX(4px)',
+                  bgcolor: theme.palette.action.hover,
                 }
               }}
             >
-              <ListItemText primary={date} />
+              <ListItemText 
+                primary={date}
+                primaryTypographyProps={{
+                  sx: {
+                    transition: theme => theme.transitions.create('color', {
+                      duration: theme.transitions.duration.shorter,
+                    }),
+                    fontWeight: selectedDate === date ? 600 : 400,
+                  }
+                }}
+              />
             </ListItemButton>
           ))}
         </List>

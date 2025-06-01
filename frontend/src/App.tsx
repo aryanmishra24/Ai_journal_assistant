@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import Navbar from './components/Navbar';
 import Layout from './components/Layout';
@@ -14,6 +14,15 @@ import Insights from './pages/Insights';
 import Mood from './pages/Mood';
 import { JournalEntry, Mood as MoodType } from './services/api';
 
+// Protected Route component
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+};
+
 // Create a wrapper component to access location
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -21,6 +30,15 @@ const AppContent: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [moodEntries, setMoodEntries] = useState<MoodType[]>([]);
+  const token = localStorage.getItem('token');
+
+  // Clear entries when token is removed
+  useEffect(() => {
+    if (!token) {
+      setJournalEntries([]);
+      setMoodEntries([]);
+    }
+  }, [token]);
 
   // Determine the current page type
   const getPageType = () => {
@@ -39,49 +57,64 @@ const AppContent: React.FC = () => {
     return type === 'mood' ? moodEntries : journalEntries;
   };
 
+  // Check if current page is an auth page
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+
+  // Redirect to home if already logged in and trying to access auth pages
+  if (token && isAuthPage) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="App">
       <Navbar />
-      <Layout
-        type={getPageType()}
-        entries={getEntries()}
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={handleToggleSidebar}
-        selectedDate={selectedDate}
-        onDateSelect={setSelectedDate}
-      >
+      {isAuthPage ? (
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route 
-            path="/" 
-            element={
-              <Journal 
-                selectedDate={selectedDate} 
-                onDateSelect={setSelectedDate}
-                sidebarOpen={sidebarOpen}
-                onToggleSidebar={handleToggleSidebar}
-                entries={journalEntries}
-                setEntries={setJournalEntries}
-              />
-            } 
-          />
-          <Route path="/insights" element={<Insights />} />
-          <Route 
-            path="/mood" 
-            element={
-              <Mood 
-                selectedDate={selectedDate} 
-                onDateSelect={setSelectedDate}
-                sidebarOpen={sidebarOpen}
-                onToggleSidebar={handleToggleSidebar}
-                entries={moodEntries}
-                setEntries={setMoodEntries}
-              />
-            } 
-          />
         </Routes>
-      </Layout>
+      ) : (
+        <ProtectedRoute>
+          <Layout
+            type={getPageType()}
+            entries={getEntries()}
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={handleToggleSidebar}
+            selectedDate={selectedDate}
+            onDateSelect={setSelectedDate}
+          >
+            <Routes>
+              <Route 
+                path="/" 
+                element={
+                  <Journal 
+                    selectedDate={selectedDate} 
+                    onDateSelect={setSelectedDate}
+                    sidebarOpen={sidebarOpen}
+                    onToggleSidebar={handleToggleSidebar}
+                    entries={journalEntries}
+                    setEntries={setJournalEntries}
+                  />
+                } 
+              />
+              <Route path="/insights" element={<Insights />} />
+              <Route 
+                path="/mood" 
+                element={
+                  <Mood 
+                    selectedDate={selectedDate} 
+                    onDateSelect={setSelectedDate}
+                    sidebarOpen={sidebarOpen}
+                    onToggleSidebar={handleToggleSidebar}
+                    entries={moodEntries}
+                    setEntries={setMoodEntries}
+                  />
+                } 
+              />
+            </Routes>
+          </Layout>
+        </ProtectedRoute>
+      )}
     </div>
   );
 };

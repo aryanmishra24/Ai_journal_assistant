@@ -214,9 +214,29 @@ export const getJournalInsights = async (days: number = 30) => {
 };
 
 // Summary API
-export const generateDailySummary = async () => {
-  const response = await axios.post(`${API_URL}/summary/generate`);
-  return response.data;
+export const generateDailySummary = async (date: string | null): Promise<DailySummary> => {
+  try {
+    console.log("=== generateDailySummary ===");
+    console.log("Input date:", date);
+    
+    // Format date as YYYY-MM-DD if provided
+    const formattedDate = date ? date.split('/').reverse().join('-') : null;
+    console.log("Formatted date for backend:", formattedDate);
+    
+    // Send date as a query parameter
+    const url = formattedDate ? `/summary/generate?date=${formattedDate}` : '/summary/generate';
+    console.log("Request URL:", url);
+    
+    const response = await axios.post<DailySummary>(url);
+    console.log("Response:", response.data);
+    console.log("Summary date:", response.data.date);
+    console.log("Summary text:", response.data.summary.substring(0, 100) + "...");
+    
+    return response.data;
+  } catch (error) {
+    console.error("Error in generateDailySummary:", error);
+    throw error;
+  }
 };
 
 export const getDailySummaries = async () => {
@@ -241,8 +261,14 @@ export const deleteMood = async (id: number) => {
 };
 
 // Mood Summary API
-export const generateMoodSummary = async () => {
-  const response = await axios.post(`${API_URL}/mood/summary/generate`);
+export const generateMoodSummary = async (date?: string | null): Promise<DailyMoodSummary> => {
+  // Convert date from DD/MM/YYYY to YYYY-MM-DD format
+  const formattedDate = date ? date.split('/').reverse().join('-') : null;
+  console.log('Sending date to backend:', formattedDate);
+  console.log('Request URL:', `${API_URL}/mood/summary/generate`);
+  console.log('Request body:', { date: formattedDate });
+  const response = await axios.post(`${API_URL}/mood/summary/generate`, { date: formattedDate });
+  console.log('Response:', response.data);
   return response.data;
 };
 

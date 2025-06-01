@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Union
 from datetime import datetime, date, timedelta
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -83,6 +83,7 @@ scheduler.add_job(
 
 @router.post("/generate", response_model=DailySummaryResponse)
 def generate_summary(
+    date: Union[str, None] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -91,49 +92,71 @@ def generate_summary(
         current_utc = datetime.utcnow()
         current_ist = to_ist(current_utc)
         
-        # Get today's date in IST
-        today_ist = current_ist.date()
-        logger.debug(f"Current UTC: {current_utc}, Current IST: {current_ist}")
-        logger.debug(f"Today's date in IST: {today_ist}")
+        logger.debug("=== Summary Generation Debug ===")
+        logger.debug(f"Received date parameter: {date}")
         
-        # Check if summary already exists for today
-        existing = db.query(DailySummary).filter(
-            DailySummary.user_id == current_user.id,
-            DailySummary.date == today_ist
-        ).first()
-        
-        if existing:
-            return existing
+        # Use provided date or today's date in IST
+        if date:
+            try:
+                target_date = datetime.strptime(date, "%Y-%m-%d").date()
+                logger.debug(f"Parsed target date: {target_date}")
+            except ValueError:
+                logger.error(f"Invalid date format received: {date}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid date format. Use YYYY-MM-DD."
+                )
+        else:
+            target_date = current_ist.date()
+            logger.debug(f"No date provided, using today's date: {target_date}")
+            
+        logger.debug(f"Current UTC: {current_utc}")
+        logger.debug(f"Current IST: {current_ist}")
+        logger.debug(f"Target date in IST: {target_date}")
         
         # Convert IST date range to UTC for database query
-        today_start_ist = datetime.combine(today_ist, datetime.min.time())
-        today_end_ist = datetime.combine(today_ist, datetime.max.time())
+        target_start_ist = datetime.combine(target_date, datetime.min.time())
+        target_end_ist = datetime.combine(target_date, datetime.max.time())
         
         # Convert IST range to UTC for database query
-        today_start_utc = today_start_ist - IST_OFFSET
-        today_end_utc = today_end_ist - IST_OFFSET
+        target_start_utc = target_start_ist - IST_OFFSET
+        target_end_utc = target_end_ist - IST_OFFSET
         
-        logger.debug(f"Searching for entries between:")
-        logger.debug(f"IST range: {today_start_ist} to {today_end_ist}")
-        logger.debug(f"UTC range: {today_start_utc} to {today_end_utc}")
+        logger.debug("=== Date Range for Query ===")
+        logger.debug(f"IST range: {target_start_ist} to {target_end_ist}")
+        logger.debug(f"UTC range: {target_start_utc} to {target_end_utc}")
         
+        # Get all entries for the user first
+        all_entries = db.query(JournalEntry).filter(
+            JournalEntry.user_id == current_user.id
+        ).all()
+        logger.debug(f"Total entries for user: {len(all_entries)}")
+        
+        # Log all entries with their timestamps
+        logger.debug("=== All Entries ===")
+        for entry in all_entries:
+            entry_ist = to_ist(entry.created_at)
+            logger.debug(f"Entry {entry.id}: UTC={entry.created_at}, IST={entry_ist}")
+        
+        # Filter entries for the target date
         entries = db.query(JournalEntry).filter(
             JournalEntry.user_id == current_user.id,
-            JournalEntry.created_at >= today_start_utc,
-            JournalEntry.created_at <= today_end_utc
+            JournalEntry.created_at >= target_start_utc,
+            JournalEntry.created_at <= target_end_utc
         ).all()
         
-        # Log the entries found
-        logger.debug(f"Found {len(entries)} entries for today")
+        # Log the filtered entries
+        logger.debug(f"=== Filtered Entries for {target_date} ===")
+        logger.debug(f"Found {len(entries)} entries for target date")
         for entry in entries:
             entry_ist = to_ist(entry.created_at)
-            logger.debug(f"Entry {entry.id} created at UTC: {entry.created_at}, IST: {entry_ist}")
+            logger.debug(f"Entry {entry.id}: UTC={entry.created_at}, IST={entry_ist}")
         
         if not entries:
-            logger.info(f"No entries found for user {current_user.id} on {today_ist}")
+            logger.info(f"No entries found for user {current_user.id} on {target_date}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No entries found for today."
+                detail=f"No entries found for {target_date}."
             )
         
         # Use AI to generate summary
@@ -145,12 +168,17 @@ def generate_summary(
         # Create new summary with IST date
         summary = DailySummary(
             user_id=current_user.id,
-            date=today_ist,
+            date=target_date,
             summary=summary_text
         )
         db.add(summary)
         db.commit()
         db.refresh(summary)
+        
+        logger.debug("=== Summary Generated ===")
+        logger.debug(f"Summary date: {summary.date}")
+        logger.debug(f"Summary text: {summary_text[:200]}...")
+        
         return summary
         
     except HTTPException:

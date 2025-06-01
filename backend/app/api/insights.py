@@ -11,6 +11,14 @@ from app.models.user import User
 from textblob import TextBlob
 from collections import Counter
 import re
+from datetime import datetime, timedelta
+from app.utils.timezone import to_ist
+import logging
+from fastapi import status
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -143,55 +151,101 @@ def get_journal_insights(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Get stats and sentiment analysis
-    stats = get_journal_stats(days, db, current_user)
-    sentiment = get_sentiment_analysis(days, db, current_user)
-    
-    # Get entries for additional analysis
-    start_date = datetime.utcnow() - timedelta(days=days)
-    entries = db.query(JournalEntry).filter(
-        JournalEntry.user_id == current_user.id,
-        JournalEntry.created_at >= start_date
-    ).all()
-    
-    # Extract top keywords
-    all_words = []
-    for entry in entries:
-        all_words.extend(extract_topics(entry.content))
-    top_keywords = [word for word, _ in Counter(all_words).most_common(10)]
-    
-    # Analyze writing patterns
-    writing_patterns = {}
-    if entries:
-        # Most active time of day
-        times = [entry.created_at.hour for entry in entries]
-        most_common_hour = max(set(times), key=times.count)
-        if 5 <= most_common_hour < 12:
-            writing_patterns["Most active time"] = "Morning"
-        elif 12 <= most_common_hour < 17:
-            writing_patterns["Most active time"] = "Afternoon"
-        elif 17 <= most_common_hour < 22:
-            writing_patterns["Most active time"] = "Evening"
-        else:
-            writing_patterns["Most active time"] = "Night"
+    try:
+        # Get current time in UTC and IST
+        current_utc = datetime.utcnow()
+        current_ist = to_ist(current_utc)
+        logger.debug(f"Generating insights at UTC: {current_utc}, IST: {current_ist}")
         
-        # Writing consistency
-        days_with_entries = len(set(entry.created_at.date() for entry in entries))
-        writing_patterns["Writing consistency"] = f"{days_with_entries} days out of {days}"
-    
-    # Generate recommendations
-    recommendations = []
-    if stats.average_entry_length < 100:
-        recommendations.append("Try writing longer entries to capture more details")
-    if stats.total_entries < 10:
-        recommendations.append("Consider journaling more frequently to build a better habit")
-    if sentiment.overall_sentiment < -0.2:
-        recommendations.append("Your recent entries show some negative sentiment. Consider focusing on positive aspects")
-    
-    return JournalInsights(
-        stats=stats,
-        sentiment=sentiment,
-        top_keywords=top_keywords,
-        writing_patterns=writing_patterns,
-        recommendations=recommendations
-    ) 
+        # Calculate start date in UTC
+        start_date = current_utc - timedelta(days=days)
+        logger.debug(f"Insights period: {to_ist(start_date)} to {current_ist} IST")
+        
+        # Get all entries within the date range
+        entries = db.query(JournalEntry).filter(
+            JournalEntry.user_id == current_user.id,
+            JournalEntry.created_at >= start_date
+        ).order_by(JournalEntry.created_at.asc()).all()
+        
+        logger.debug(f"Found {len(entries)} entries for analysis")
+        for entry in entries:
+            entry_ist = to_ist(entry.created_at)
+            logger.debug(f"Entry {entry.id}: UTC={entry.created_at}, IST={entry_ist}")
+        
+        if not entries:
+            logger.info(f"No entries found for user {current_user.id} in the last {days} days")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No journal entries found for the last {days} days."
+            )
+        
+        # Get stats and sentiment analysis
+        stats = get_journal_stats(days, db, current_user)
+        sentiment = get_sentiment_analysis(days, db, current_user)
+        
+        # Extract top keywords
+        all_words = []
+        for entry in entries:
+            all_words.extend(extract_topics(entry.content))
+        top_keywords = [word for word, _ in Counter(all_words).most_common(10)]
+        
+        # Analyze writing patterns
+        writing_patterns = {}
+        if entries:
+            # Most active time of day
+            times = [to_ist(entry.created_at).hour for entry in entries]
+            most_common_hour = max(set(times), key=times.count)
+            if 5 <= most_common_hour < 12:
+                writing_patterns["Most active time"] = "Morning"
+            elif 12 <= most_common_hour < 17:
+                writing_patterns["Most active time"] = "Afternoon"
+            elif 17 <= most_common_hour < 22:
+                writing_patterns["Most active time"] = "Evening"
+            else:
+                writing_patterns["Most active time"] = "Night"
+            
+            # Writing consistency
+            days_with_entries = len(set(to_ist(entry.created_at).date() for entry in entries))
+            writing_patterns["Writing consistency"] = f"{days_with_entries} days out of {days}"
+            
+            # Average entries per day
+            avg_entries = len(entries) / days
+            writing_patterns["Average entries per day"] = f"{avg_entries:.1f}"
+            
+            # Most productive day
+            day_counts = Counter(to_ist(entry.created_at).strftime('%A') for entry in entries)
+            most_productive_day = day_counts.most_common(1)[0][0]
+            writing_patterns["Most productive day"] = most_productive_day
+        
+        # Generate recommendations
+        recommendations = []
+        if stats.average_entry_length < 100:
+            recommendations.append("Try writing longer entries to capture more details")
+        if stats.total_entries < 10:
+            recommendations.append("Consider journaling more frequently to build a better habit")
+        if sentiment.overall_sentiment < -0.2:
+            recommendations.append("Your recent entries show some negative sentiment. Consider focusing on positive aspects")
+        if days_with_entries < days * 0.3:  # Less than 30% of days have entries
+            recommendations.append("Try to maintain a more consistent journaling schedule")
+        
+        logger.debug("Generated insights with:")
+        logger.debug(f"- {len(top_keywords)} top keywords")
+        logger.debug(f"- {len(writing_patterns)} writing patterns")
+        logger.debug(f"- {len(recommendations)} recommendations")
+        
+        return JournalInsights(
+            stats=stats,
+            sentiment=sentiment,
+            top_keywords=top_keywords,
+            writing_patterns=writing_patterns,
+            recommendations=recommendations
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating insights: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate insights: {str(e)}"
+        ) 
