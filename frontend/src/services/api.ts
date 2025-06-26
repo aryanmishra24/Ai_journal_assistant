@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // Configure axios defaults
 axios.defaults.baseURL = API_URL;
@@ -280,4 +280,4 @@ export const getMoodSummaries = async () => {
 export const getMoodSummary = async (date: string) => {
   const response = await axios.get(`${API_URL}/mood/summary/${date}`);
   return response.data;
-}; 
+};
