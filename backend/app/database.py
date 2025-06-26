@@ -6,12 +6,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# For testing, we'll use SQLite instead of PostgreSQL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+# Use PostgreSQL for production, fallback to SQLite for development
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+if DATABASE_URL.startswith("postgresql"):
+    # PostgreSQL configuration
+    engine = create_engine(DATABASE_URL)
+else:
+    # SQLite configuration (for development/fallback)
+    engine = create_engine(
+        DATABASE_URL, connect_args={"check_same_thread": False}
+    )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
