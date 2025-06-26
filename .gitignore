@@ -66,11 +66,19 @@ desktop.ini
 $RECYCLE.BIN/
 
 # Database
+# SQLite files
 *.sqlite3
-*.db  # Ignore all database files
-# test.db is ignored by default with *.db
-# If you want to keep test.db in git, uncomment the next line:
-# !test.db
+*.db
+test.db
+
+# PostgreSQL files
+*.sql
+*.dump
+*.backup
+*.psql
+
+# Database migration files (keep alembic versions, ignore other migration files)
+# !alembic/versions/*.py
 
 # Temporary files
 *.tmp
@@ -105,4 +113,17 @@ htmlcov/
 coverage.xml
 *.cover
 .hypothesis/
-.pytest_cache/ 
+.pytest_cache/
+
+# API Keys and Secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Database
+*.db  # Ignore all database files
+# test.db is ignored by default with *.db
+# If you want to keep test.db in git, uncomment the next line:
+# !test.db 
